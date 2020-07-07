@@ -18,7 +18,6 @@
 #include <AppInstallerSynchronization.h>
 #include <AppInstallerVersions.h>
 #include <winget/ExtensionCatalog.h>
-#include <winget/Settings.h>
 #include <yaml-cpp/yaml.h>
 
 #include <wil/result_macros.h>
@@ -33,7 +32,6 @@
 #include <algorithm>
 #include <chrono>
 #include <filesystem>
-#include <fstream>
 #include <initializer_list>
 #include <iomanip>
 #include <optional>

@@ -6,7 +6,6 @@
 #include <AppInstallerRuntime.h>
 #include <AppInstallerStrings.h>
 #include <Microsoft/PreIndexedPackageSourceFactory.h>
-#include <winget/Settings.h>
 
 using namespace std::string_literals;
 using namespace std::string_view_literals;
@@ -14,7 +13,6 @@ using namespace TestCommon;
 using namespace AppInstaller;
 using namespace AppInstaller::Repository;
 using namespace AppInstaller::Runtime;
-using namespace AppInstaller::Settings;
 using namespace AppInstaller::Utility;
 
 namespace fs = std::filesystem;
@@ -41,7 +39,7 @@ void CopyIndexFileToDirectory(const fs::path& from, const fs::path& to)
 
 fs::path GetPathToFileDir()
 {
-    fs::path result = GetPathTo(Runtime::PathName::LocalState);
+    fs::path result = GetPathToLocalState();
     result /= AppInstaller::Repository::Microsoft::PreIndexedPackageSourceFactory::Type();
     result /= s_Msix_FamilyName;
     return result;
@@ -56,7 +54,7 @@ std::string GetContents(const fs::path& file)
 
 TEST_CASE("PIPS_Add", "[pips]")
 {
-    RemoveSetting(Streams::UserSources);
+    RemoveSetting(s_RepositorySettings_UserSources);
 
     TempDirectory dir("pipssource");
     TestDataFile index(s_MsixFile_1);
@@ -85,7 +83,7 @@ TEST_CASE("PIPS_Add", "[pips]")
 
 TEST_CASE("PIPS_UpdateSameVersion", "[pips]")
 {
-    RemoveSetting(Streams::UserSources);
+    RemoveSetting(s_RepositorySettings_UserSources);
 
     TempDirectory dir("pipssource");
     TestDataFile index(s_MsixFile_1);
@@ -110,7 +108,7 @@ TEST_CASE("PIPS_UpdateSameVersion", "[pips]")
 
 TEST_CASE("PIPS_UpdateNewVersion", "[pips]")
 {
-    RemoveSetting(Streams::UserSources);
+    RemoveSetting(s_RepositorySettings_UserSources);
 
     TempDirectory dir("pipssource");
     TestDataFile indexMsix1(s_MsixFile_1);
@@ -152,7 +150,7 @@ TEST_CASE("PIPS_UpdateNewVersion", "[pips]")
 
 TEST_CASE("PIPS_Remove", "[pips]")
 {
-    RemoveSetting(Streams::UserSources);
+    RemoveSetting(s_RepositorySettings_UserSources);
 
     TempDirectory dir("pipssource");
     TestDataFile index(s_MsixFile_1);

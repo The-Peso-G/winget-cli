@@ -124,9 +124,9 @@
     <ClCompile>
       <Optimization>Disabled</Optimization>
       <PreprocessorDefinitions>_DEBUG;%(PreprocessorDefinitions);CLICOREDLLBUILD</PreprocessorDefinitions>
-      <AdditionalIncludeDirectories Condition="'$(Configuration)|$(Platform)'=='Debug|ARM'">$(ProjectDir);$(ProjectDir)..\AppInstallerCommonCore;$(ProjectDir)..\AppInstallerRepositoryCore;$(ProjectDir)..\AppInstallerCommonCore\Public;$(ProjectDir)..\YamlCppLib\yaml-cpp\include;$(ProjectDir)..\JsonCppLib\json;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
-      <AdditionalIncludeDirectories Condition="'$(Configuration)|$(Platform)'=='Debug|ARM64'">$(ProjectDir);$(ProjectDir)..\AppInstallerCommonCore;$(ProjectDir)..\AppInstallerRepositoryCore;$(ProjectDir)..\AppInstallerCommonCore\Public;$(ProjectDir)..\YamlCppLib\yaml-cpp\include;$(ProjectDir)..\JsonCppLib\json;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
-      <AdditionalIncludeDirectories Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">$(ProjectDir);$(ProjectDir)..\AppInstallerCommonCore;$(ProjectDir)..\AppInstallerRepositoryCore;$(ProjectDir)..\AppInstallerCommonCore\Public;$(ProjectDir)..\YamlCppLib\yaml-cpp\include;$(ProjectDir)..\JsonCppLib\json;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories Condition="'$(Configuration)|$(Platform)'=='Debug|ARM'">$(ProjectDir);$(ProjectDir)..\AppInstallerCommonCore;$(ProjectDir)..\AppInstallerRepositoryCore;$(ProjectDir)..\AppInstallerCommonCore\Public;$(ProjectDir)..\YamlCppLib\yaml-cpp\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories Condition="'$(Configuration)|$(Platform)'=='Debug|ARM64'">$(ProjectDir);$(ProjectDir)..\AppInstallerCommonCore;$(ProjectDir)..\AppInstallerRepositoryCore;$(ProjectDir)..\AppInstallerCommonCore\Public;$(ProjectDir)..\YamlCppLib\yaml-cpp\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">$(ProjectDir);$(ProjectDir)..\AppInstallerCommonCore;$(ProjectDir)..\AppInstallerRepositoryCore;$(ProjectDir)..\AppInstallerCommonCore\Public;$(ProjectDir)..\YamlCppLib\yaml-cpp\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <TreatWarningAsError Condition="'$(Configuration)|$(Platform)'=='Debug|ARM'">true</TreatWarningAsError>
       <TreatWarningAsError Condition="'$(Configuration)|$(Platform)'=='Debug|ARM64'">true</TreatWarningAsError>
       <TreatWarningAsError Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</TreatWarningAsError>
@@ -142,9 +142,6 @@
       <AdditionalDependencies Condition="'$(Configuration)|$(Platform)'=='Debug|ARM'">wininet.lib;shell32.lib;winsqlite3.lib;shlwapi.lib;icuuc.lib;icuin.lib;urlmon.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <AdditionalDependencies Condition="'$(Configuration)|$(Platform)'=='Debug|ARM64'">wininet.lib;shell32.lib;winsqlite3.lib;shlwapi.lib;icuuc.lib;icuin.lib;urlmon.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <AdditionalDependencies Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">wininet.lib;shell32.lib;winsqlite3.lib;shlwapi.lib;icuuc.lib;icuin.lib;urlmon.lib;%(AdditionalDependencies)</AdditionalDependencies>
-      <DelayLoadDLLs Condition="'$(Configuration)|$(Platform)'=='Debug|ARM'">winsqlite3.dll;icuuc.dll;icuin.dll;%(DelayLoadDLLs)</DelayLoadDLLs>
-      <DelayLoadDLLs Condition="'$(Configuration)|$(Platform)'=='Debug|ARM64'">winsqlite3.dll;icuuc.dll;icuin.dll;%(DelayLoadDLLs)</DelayLoadDLLs>
-      <DelayLoadDLLs Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">winsqlite3.dll;icuuc.dll;icuin.dll;%(DelayLoadDLLs)</DelayLoadDLLs>
     </Link>
     <Manifest>
       <AdditionalManifestFiles Condition="'$(Configuration)|$(Platform)'=='Debug|ARM'">$(ProjectDir)..\manifest\shared.manifest %(AdditionalManifestFiles)</AdditionalManifestFiles>
@@ -159,14 +156,13 @@
   <ItemDefinitionGroup Condition="'$(Platform)'=='Win32'">
     <ClCompile>
       <PreprocessorDefinitions>WIN32;%(PreprocessorDefinitions);CLICOREDLLBUILD</PreprocessorDefinitions>
-      <AdditionalIncludeDirectories Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">$(ProjectDir);$(ProjectDir)..\AppInstallerCommonCore;$(ProjectDir)..\AppInstallerRepositoryCore;$(ProjectDir)..\AppInstallerCommonCore\Public;$(ProjectDir)..\YamlCppLib\yaml-cpp\include;$(ProjectDir)..\JsonCppLib\json;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">$(ProjectDir);$(ProjectDir)..\AppInstallerCommonCore;$(ProjectDir)..\AppInstallerRepositoryCore;$(ProjectDir)..\AppInstallerCommonCore\Public;$(ProjectDir)..\YamlCppLib\yaml-cpp\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <TreatWarningAsError Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">true</TreatWarningAsError>
     </ClCompile>
     <Link>
       <SubSystem Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">Windows</SubSystem>
       <ModuleDefinitionFile Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">Source.def</ModuleDefinitionFile>
       <AdditionalDependencies Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">wininet.lib;shell32.lib;winsqlite3.lib;shlwapi.lib;icuuc.lib;icuin.lib;urlmon.lib;%(AdditionalDependencies)</AdditionalDependencies>
-      <DelayLoadDLLs Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">winsqlite3.dll;icuuc.dll;icuin.dll;%(DelayLoadDLLs)</DelayLoadDLLs>
     </Link>
     <Manifest>
       <AdditionalManifestFiles Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">$(ProjectDir)..\manifest\shared.manifest %(AdditionalManifestFiles)</AdditionalManifestFiles>
@@ -203,10 +199,6 @@
       <AdditionalDependencies Condition="'$(Configuration)|$(Platform)'=='Release|ARM64'">wininet.lib;shell32.lib;winsqlite3.lib;shlwapi.lib;icuuc.lib;icuin.lib;urlmon.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <AdditionalDependencies Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">wininet.lib;shell32.lib;winsqlite3.lib;shlwapi.lib;icuuc.lib;icuin.lib;urlmon.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <AdditionalDependencies Condition="'$(Configuration)|$(Platform)'=='Release|x64'">wininet.lib;shell32.lib;winsqlite3.lib;shlwapi.lib;icuuc.lib;icuin.lib;urlmon.lib;%(AdditionalDependencies)</AdditionalDependencies>
-      <DelayLoadDLLs Condition="'$(Configuration)|$(Platform)'=='Release|ARM'">winsqlite3.dll;icuuc.dll;icuin.dll;%(DelayLoadDLLs)</DelayLoadDLLs>
-      <DelayLoadDLLs Condition="'$(Configuration)|$(Platform)'=='Release|ARM64'">winsqlite3.dll;icuuc.dll;icuin.dll;%(DelayLoadDLLs)</DelayLoadDLLs>
-      <DelayLoadDLLs Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">winsqlite3.dll;icuuc.dll;icuin.dll;%(DelayLoadDLLs)</DelayLoadDLLs>
-      <DelayLoadDLLs Condition="'$(Configuration)|$(Platform)'=='Release|x64'">winsqlite3.dll;icuuc.dll;icuin.dll;%(DelayLoadDLLs)</DelayLoadDLLs>
     </Link>
     <Manifest>
       <AdditionalManifestFiles Condition="'$(Configuration)|$(Platform)'=='Release|ARM'">$(ProjectDir)..\manifest\shared.manifest %(AdditionalManifestFiles)</AdditionalManifestFiles>
@@ -242,9 +234,6 @@
     </ProjectReference>
     <ProjectReference Include="..\AppInstallerRepositoryCore\AppInstallerRepositoryCore.vcxproj">
       <Project>{5eb88068-5fb9-4e69-89b2-72dbc5e068f9}</Project>
-    </ProjectReference>
-    <ProjectReference Include="..\JsonCppLib\JsonCppLib.vcxproj">
-      <Project>{82b39fda-e86b-4713-a873-9d56de00247a}</Project>
     </ProjectReference>
     <ProjectReference Include="..\YamlCppLib\YamlCppLib.vcxproj">
       <Project>{8bb94bb8-374f-4294-bca1-c7811514a6b7}</Project>

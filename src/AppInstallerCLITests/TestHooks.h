@@ -7,8 +7,6 @@
 #include <memory>
 #include <string>
 
-#include <AppInstallerRuntime.h>
-
 #ifdef AICLI_DISABLE_TEST_HOOKS
 static_assert(false, "Test hooks have been disabled");
 #endif
@@ -17,8 +15,7 @@ namespace AppInstaller
 {
     namespace Runtime
     {
-        void TestHook_SetPathOverride(PathName target, const std::filesystem::path& path);
-        void TestHook_ClearPathOverrides();
+        void TestHook_ForceContainerPrepend(const std::filesystem::path& prepend);
     }
 
     namespace Repository
