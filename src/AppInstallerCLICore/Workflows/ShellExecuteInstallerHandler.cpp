@@ -16,16 +16,16 @@ namespace AppInstaller::CLI::Workflow
         {
             AICLI_LOG(CLI, Info, << "Starting installer. Path: " << filePath);
 
-            SHELLEXECUTEINFOA execInfo = { 0 };
-            execInfo.cbSize = sizeof(SHELLEXECUTEINFO);
+            SHELLEXECUTEINFOW execInfo = { 0 };
+            execInfo.cbSize = sizeof(execInfo);
             execInfo.fMask = SEE_MASK_NOCLOSEPROCESS;
-            std::string filePathUTF8Str = filePath.u8string();
-            execInfo.lpFile = filePathUTF8Str.c_str();
-            execInfo.lpParameters = args.c_str();
+            execInfo.lpFile = filePath.c_str();
+            std::wstring argsUtf16 = Utility::ConvertToUTF16(args);
+            execInfo.lpParameters = argsUtf16.c_str();
             // Some installers force UI. Setting to SW_HIDE will hide installer UI and installation will hang forever.
             // Verified setting to SW_SHOW does not hurt silent mode since no UI will be shown.
             execInfo.nShow = SW_SHOW;
-            if (!ShellExecuteExA(&execInfo) || !execInfo.hProcess)
+            if (!ShellExecuteExW(&execInfo) || !execInfo.hProcess)
             {
                 return GetLastError();
             }
@@ -65,17 +65,30 @@ namespace AppInstaller::CLI::Workflow
             const std::map<ManifestInstaller::InstallerSwitchType, Utility::NormalizedString>& installerSwitches = context.Get<Execution::Data::Installer>()->Switches;
 
             // Construct install experience arg.
-            if (context.Args.Contains(Execution::Args::Type::Silent) && installerSwitches.find(ManifestInstaller::InstallerSwitchType::Silent) != installerSwitches.end())
+            // SilentWithProgress is default, so look for it first.
+            auto argsItr = installerSwitches.find(ManifestInstaller::InstallerSwitchType::SilentWithProgress);
+
+            if (context.Args.Contains(Execution::Args::Type::Interactive))
             {
-                installerArgs += installerSwitches.at(ManifestInstaller::InstallerSwitchType::Silent);
+                // If interacive requested, always use Interactive (or nothing). If the installer supports
+                // interactive it is usually the default, and thus it is cumbersome to put a blank entry in
+                // the manifest.
+                argsItr = installerSwitches.find(ManifestInstaller::InstallerSwitchType::Interactive);
             }
-            else if (context.Args.Contains(Execution::Args::Type::Interactive) && installerSwitches.find(ManifestInstaller::InstallerSwitchType::Interactive) != installerSwitches.end())
+            // If no SilentWithProgress exists, or Silent requested, try to find Silent.
+            else if (argsItr == installerSwitches.end() || context.Args.Contains(Execution::Args::Type::Silent))
             {
-                installerArgs += installerSwitches.at(ManifestInstaller::InstallerSwitchType::Interactive);
+                auto silentItr = installerSwitches.find(ManifestInstaller::InstallerSwitchType::Silent);
+                // If Silent requested, but doesn't exist, then continue using SilentWithProgress.
+                if (silentItr != installerSwitches.end())
+                {
+                    argsItr = silentItr;
+                }
             }
-            else if (installerSwitches.find(ManifestInstaller::InstallerSwitchType::SilentWithProgress) != installerSwitches.end())
+
+            if (argsItr != installerSwitches.end())
             {
-                installerArgs += installerSwitches.at(ManifestInstaller::InstallerSwitchType::SilentWithProgress);
+                installerArgs += argsItr->second;
             }
 
             // Construct language arg if necessary.
@@ -121,7 +134,7 @@ namespace AppInstaller::CLI::Workflow
 
             if (Utility::FindAndReplace(installerArgs, std::string(ARG_TOKEN_LOGPATH), logPath))
             {
-                context.Add<Execution::Data::LogPath>(logPath);
+                context.Add<Execution::Data::LogPath>(Utility::ConvertToUTF16(logPath));
             }
 
             // Populate <InstallPath> with value from command line.

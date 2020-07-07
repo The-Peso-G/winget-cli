@@ -54,11 +54,14 @@ namespace AppInstaller::CLI::Execution
             Force,      // Generic flag to enable a command to skip some check
             ListVersions, // Used in Show command to list all available versions of an app
             NoVT, // Disable VirtualTerminal outputs
-            PlainStyle, // Makes progress display as plain
+            RetroStyle, // Makes progress display as retro
             RainbowStyle, // Makes progress display as a rainbow
             Help, // Show command usage
             Info, // Show general info about WinGet
             VerboseLogs, // Increases winget logging level to verbose
+
+            // Used for demonstration purposes
+            ExperimentalArg,
         };
 
         bool Contains(Type arg) const { return (m_parsedArgs.count(arg) != 0); }
