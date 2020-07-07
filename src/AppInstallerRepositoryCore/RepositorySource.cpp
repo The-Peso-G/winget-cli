@@ -2,48 +2,29 @@
 // Licensed under the MIT License.
 #include "pch.h"
 #include "Public/AppInstallerRepositorySource.h"
-#include <winget/UserSettings.h>
 
 #include "SourceFactory.h"
 #include "Microsoft/PreIndexedPackageSourceFactory.h"
 
 namespace AppInstaller::Repository
 {
-    using namespace Settings;
-
     using namespace std::chrono_literals;
     using namespace std::string_view_literals;
+    constexpr std::string_view s_RepositorySettings_UserSources = "usersources"sv;
 
     constexpr std::string_view s_SourcesYaml_Sources = "Sources"sv;
     constexpr std::string_view s_SourcesYaml_Source_Name = "Name"sv;
     constexpr std::string_view s_SourcesYaml_Source_Type = "Type"sv;
     constexpr std::string_view s_SourcesYaml_Source_Arg = "Arg"sv;
     constexpr std::string_view s_SourcesYaml_Source_Data = "Data"sv;
-    constexpr std::string_view s_SourcesYaml_Source_IsTombstone = "IsTombstone"sv;
-
-    constexpr std::string_view s_MetadataYaml_Sources = "Sources"sv;
-    constexpr std::string_view s_MetadataYaml_Source_Name = "Name"sv;
-    constexpr std::string_view s_MetadataYaml_Source_LastUpdate = "LastUpdate"sv;
+    constexpr std::string_view s_SourcesYaml_Source_LastUpdate = "LastUpdate"sv;
+    constexpr std::string_view s_SourcesYaml_Source_IsDefault = "IsDefault"sv;
 
     constexpr std::string_view s_Source_WingetCommunityDefault_Name = "winget"sv;
     constexpr std::string_view s_Source_WingetCommunityDefault_Arg = "https://winget.azureedge.net/cache"sv;
-    constexpr std::string_view s_Source_WingetCommunityDefault_Data = "Microsoft.Winget.Source_8wekyb3d8bbwe"sv;
 
     namespace
     {
-        // SourceDetails with additional data used by this file.
-        struct SourceDetailsInternal : public SourceDetails
-        {
-            // If true, this is a tombstone, marking the deletion of a source at a lower priority origin.
-            bool IsTombstone = false;
-        };
-
-        // Finds a source from the given vector by its name.
-        auto FindSourceByName(std::vector<SourceDetailsInternal>& sources, std::string_view name)
-        {
-            return std::find_if(sources.begin(), sources.end(), [&name](const SourceDetailsInternal& sd) { return Utility::CaseInsensitiveEquals(sd.Name, name); });
-        }
-
         // Attempts to read a single scalar value from the node.
         template<typename Value>
         bool TryReadScalar(std::string_view settingName, const std::string& settingValue, const YAML::Node& sourceNode, std::string_view name, Value& value, bool required = true)
@@ -65,14 +46,11 @@ namespace AppInstaller::Repository
 
         // Attempts to read the source details from the given stream.
         // Results are all or nothing; if any failures occur, no details are returned.
-        bool TryReadSourceDetails(
-            std::string_view settingName,
-            std::istream& stream,
-            std::string_view rootName,
-            std::function<bool(SourceDetailsInternal&, const std::string&, const YAML::Node&)> parse,
-            std::vector<SourceDetailsInternal>& sourceDetails)
+        bool TryReadSourceDetails(std::string_view settingName, std::istream& stream, std::vector<SourceDetails>& sourceDetails)
         {
-            std::vector<SourceDetailsInternal> result;
+            sourceDetails.clear();
+
+            std::vector<SourceDetails> result;
             std::string settingValue = Utility::ReadEntireStream(stream);
 
             YAML::Node document;
@@ -88,10 +66,10 @@ namespace AppInstaller::Repository
 
             try
             {
-                YAML::Node sources = document[std::string{ rootName }];
+                YAML::Node sources = document[std::string{ s_SourcesYaml_Sources }];
                 if (!sources)
                 {
-                    AICLI_LOG(Repo, Error, << "Setting '" << settingName << "' did not contain the expected format (missing " << rootName << "):\n" << settingValue);
+                    AICLI_LOG(Repo, Error, << "Setting '" << settingName << "' did not contain the expected format (missing " << s_SourcesYaml_Sources << "):\n" << settingValue);
                     return false;
                 }
 
@@ -103,16 +81,29 @@ namespace AppInstaller::Repository
 
                 if (!sources.IsSequence())
                 {
-                    AICLI_LOG(Repo, Error, << "Setting '" << settingName << "' did not contain the expected format (" << rootName << " was not a sequence):\n" << settingValue);
+                    AICLI_LOG(Repo, Error, << "Setting '" << settingName << "' did not contain the expected format (" << s_SourcesYaml_Sources << " was not a sequence):\n" << settingValue);
                     return false;
                 }
 
                 for (const auto& source : sources)
                 {
-                    SourceDetailsInternal details;
-                    if (!parse(details, settingValue, source))
+                    SourceDetails details;
+                    if (!TryReadScalar(settingName, settingValue, source, s_SourcesYaml_Source_Name, details.Name)) { return false; }
+                    if (!TryReadScalar(settingName, settingValue, source, s_SourcesYaml_Source_Type, details.Type)) { return false; }
+                    if (!TryReadScalar(settingName, settingValue, source, s_SourcesYaml_Source_Arg, details.Arg)) { return false; }
+                    if (!TryReadScalar(settingName, settingValue, source, s_SourcesYaml_Source_Data, details.Data)) { return false; }
+                    int64_t lastUpdateInEpoch{};
+                    if (!TryReadScalar(settingName, settingValue, source, s_SourcesYaml_Source_LastUpdate, lastUpdateInEpoch)) { return false; }
+                    details.LastUpdateTime = Utility::ConvertUnixEpochToSystemClock(lastUpdateInEpoch);
+                    int32_t isDefaultNumber{};
+                    if (TryReadScalar(settingName, settingValue, source, s_SourcesYaml_Source_IsDefault, isDefaultNumber, false))
                     {
-                        return false;
+                        details.IsDefault = (isDefaultNumber != 0);
+                    }
+                    else
+                    {
+                        // If older than defaults, assume it is not one.
+                        details.IsDefault = false;
                     }
 
                     result.emplace_back(std::move(details));
@@ -129,143 +120,27 @@ namespace AppInstaller::Repository
         }
 
         // Gets the source details from a particular setting, or an empty optional if no setting exists.
-        std::optional<std::vector<SourceDetailsInternal>> TryGetSourcesFromSetting(
-            const Settings::StreamDefinition& setting,
-            std::string_view rootName,
-            std::function<bool(SourceDetailsInternal&, const std::string&, const YAML::Node&)> parse)
+        std::optional<std::vector<SourceDetails>> TryGetSourcesFromSetting(std::string_view settingName)
         {
-            auto sourcesStream = Settings::GetSettingStream(setting);
+            auto sourcesStream = Runtime::GetSettingStream(settingName);
             if (!sourcesStream)
             {
+                // Handle first run scenario and configure default source(s).
                 // Note that this case is different than the one in which all sources have been removed.
                 return {};
             }
             else
             {
-                std::vector<SourceDetailsInternal> result;
-                THROW_HR_IF(APPINSTALLER_CLI_ERROR_SOURCES_INVALID, !TryReadSourceDetails(setting.Path, *sourcesStream, rootName, parse, result));
+                std::vector<SourceDetails> result;
+                THROW_HR_IF(APPINSTALLER_CLI_ERROR_SOURCES_INVALID, !TryReadSourceDetails(settingName, *sourcesStream, result));
                 return result;
             }
         }
 
         // Gets the source details from a particular setting.
-        std::vector<SourceDetailsInternal> GetSourcesFromSetting(
-            const Settings::StreamDefinition& setting,
-            std::string_view rootName,
-            std::function<bool(SourceDetailsInternal&, const std::string&, const YAML::Node&)> parse)
+        std::vector<SourceDetails> GetSourcesFromSetting(std::string_view settingName)
         {
-            return TryGetSourcesFromSetting(setting, rootName, parse).value_or(std::vector<SourceDetailsInternal>{});
-        }
-
-        // Gets the metadata.
-        std::vector<SourceDetailsInternal> GetMetadata()
-        {
-            return GetSourcesFromSetting(
-                Settings::Streams::SourcesMetadata,
-                s_MetadataYaml_Sources,
-                [&](SourceDetailsInternal& details, const std::string& settingValue, const YAML::Node& source)
-                {
-                    std::string_view name = Settings::Streams::SourcesMetadata.Path;
-                    if (!TryReadScalar(name, settingValue, source, s_MetadataYaml_Source_Name, details.Name)) { return false; }
-                    int64_t lastUpdateInEpoch{};
-                    if (!TryReadScalar(name, settingValue, source, s_MetadataYaml_Source_LastUpdate, lastUpdateInEpoch)) { return false; }
-                    details.LastUpdateTime = Utility::ConvertUnixEpochToSystemClock(lastUpdateInEpoch);
-                    return true;
-                });
-        }
-
-        // Gets the sources from a particular origin.
-        std::vector<SourceDetailsInternal> GetSourcesByOrigin(SourceOrigin origin)
-        {
-            std::vector<SourceDetailsInternal> result;
-
-            switch (origin)
-            {
-            case SourceOrigin::Default:
-            {
-                SourceDetailsInternal details;
-                details.Name = s_Source_WingetCommunityDefault_Name;
-                details.Type = Microsoft::PreIndexedPackageSourceFactory::Type();
-                details.Arg = s_Source_WingetCommunityDefault_Arg;
-                details.Data = s_Source_WingetCommunityDefault_Data;
-                result.emplace_back(std::move(details));
-            }
-                break;
-            case SourceOrigin::User:
-                result = GetSourcesFromSetting(
-                    Settings::Streams::UserSources,
-                    s_SourcesYaml_Sources,
-                    [&](SourceDetailsInternal& details, const std::string& settingValue, const YAML::Node& source)
-                    {
-                        std::string_view name = Settings::Streams::UserSources.Path;
-                        if (!TryReadScalar(name, settingValue, source, s_SourcesYaml_Source_Name, details.Name)) { return false; }
-                        if (!TryReadScalar(name, settingValue, source, s_SourcesYaml_Source_Type, details.Type)) { return false; }
-                        if (!TryReadScalar(name, settingValue, source, s_SourcesYaml_Source_Arg, details.Arg)) { return false; }
-                        if (!TryReadScalar(name, settingValue, source, s_SourcesYaml_Source_Data, details.Data)) { return false; }
-                        if (!TryReadScalar(name, settingValue, source, s_SourcesYaml_Source_IsTombstone, details.IsTombstone)) { return false; }
-                        return true;
-                    });
-                break;
-            default:
-                THROW_HR(E_UNEXPECTED);
-            }
-
-            for (auto& source : result)
-            {
-                source.Origin = origin;
-            }
-
-            return result;
-        }
-
-        // Gets the internal view of the sources.
-        std::vector<SourceDetailsInternal> GetSourcesInternal()
-        {
-            std::vector<SourceDetailsInternal> result;
-
-            for (SourceOrigin origin : { SourceOrigin::User, SourceOrigin::Default })
-            {
-                auto forOrigin = GetSourcesByOrigin(origin);
-
-                for (auto&& source : forOrigin)
-                {
-                    auto itr = FindSourceByName(result, source.Name);
-                    if (itr == result.end())
-                    {
-                        // Name not already defined, add it
-                        result.emplace_back(std::move(source));
-                    }
-                    else
-                    {
-                        AICLI_LOG(Repo, Info, << "Source named '" << itr->Name << "' is already defined at origin " << ToString(itr->Origin) <<
-                            ". The source from origin " << ToString(origin) << " is dropped.");
-                    }
-                }
-            }
-
-            // Remove all tombstones, walking backwards.
-            for (size_t j = result.size(); j > 0; --j)
-            {
-                size_t i = j - 1;
-
-                if (result[i].IsTombstone)
-                {
-                    AICLI_LOG(Repo, Info, << "Source named '" << result[i].Name << "' from origin " << ToString(result[i].Origin) << " is a tombstone and is dropped.");
-                    result.erase(result.begin() + i);
-                }
-            }
-
-            auto metadata = GetMetadata();
-            for (const auto& metaSource : metadata)
-            {
-                auto itr = FindSourceByName(result, metaSource.Name);
-                if (itr != result.end())
-                {
-                    itr->LastUpdateTime = metaSource.LastUpdateTime;
-                }
-            }
-
-            return result;
+            return TryGetSourcesFromSetting(settingName).value_or(std::vector<SourceDetails>{});
         }
 
         // Make up for the lack of string_view support in YAML CPP.
@@ -274,69 +149,36 @@ namespace AppInstaller::Repository
             return (out << std::string(sv));
         }
 
-        // Sets the sources for a particular setting, from a particular origin.
-        void SetSourcesToSettingWithFilter(const Settings::StreamDefinition& setting, SourceOrigin origin, const std::vector<SourceDetailsInternal>& sources)
+        // Sets the sources for a particular setting.
+        void SetSourcesToSetting(std::string_view settingName, const std::vector<SourceDetails>& sources)
         {
             YAML::Emitter out;
             out << YAML::BeginMap;
             out << YAML::Key << s_SourcesYaml_Sources;
             out << YAML::BeginSeq;
 
-            for (const auto& details : sources)
-            {
-                if (details.Origin == origin)
-                {
-                    out << YAML::BeginMap;
-                    out << YAML::Key << s_SourcesYaml_Source_Name << YAML::Value << details.Name;
-                    out << YAML::Key << s_SourcesYaml_Source_Type << YAML::Value << details.Type;
-                    out << YAML::Key << s_SourcesYaml_Source_Arg << YAML::Value << details.Arg;
-                    out << YAML::Key << s_SourcesYaml_Source_Data << YAML::Value << details.Data;
-                    out << YAML::Key << s_SourcesYaml_Source_IsTombstone << YAML::Value << details.IsTombstone;
-                    out << YAML::EndMap;
-                }
-            }
-
-            out << YAML::EndSeq;
-            out << YAML::EndMap;
-
-            Settings::SetSetting(setting, out.c_str());
-        }
-
-        // Sets the metadata only (which is not a secure setting and can be set unprivileged)
-        void SetMetadata(const std::vector<SourceDetailsInternal>& sources)
-        {
-            YAML::Emitter out;
-            out << YAML::BeginMap;
-            out << YAML::Key << s_MetadataYaml_Sources;
-            out << YAML::BeginSeq;
-
-            for (const auto& details : sources)
+            for (const SourceDetails& details : sources)
             {
                 out << YAML::BeginMap;
-                out << YAML::Key << s_MetadataYaml_Source_Name << YAML::Value << details.Name;
-                out << YAML::Key << s_MetadataYaml_Source_LastUpdate << YAML::Value << Utility::ConvertSystemClockToUnixEpoch(details.LastUpdateTime);
+                out << YAML::Key << s_SourcesYaml_Source_Name << YAML::Value << details.Name;
+                out << YAML::Key << s_SourcesYaml_Source_Type << YAML::Value << details.Type;
+                out << YAML::Key << s_SourcesYaml_Source_Arg << YAML::Value << details.Arg;
+                out << YAML::Key << s_SourcesYaml_Source_Data << YAML::Value << details.Data;
+                out << YAML::Key << s_SourcesYaml_Source_LastUpdate << YAML::Value << Utility::ConvertSystemClockToUnixEpoch(details.LastUpdateTime);
+                out << YAML::Key << s_SourcesYaml_Source_IsDefault << YAML::Value << (details.IsDefault ? 1 : 0);
                 out << YAML::EndMap;
             }
 
             out << YAML::EndSeq;
             out << YAML::EndMap;
 
-            Settings::SetSetting(Settings::Streams::SourcesMetadata, out.c_str());
+            Runtime::SetSetting(settingName, out.c_str());
         }
 
-        // Sets the sources for a given origin.
-        void SetSourcesByOrigin(SourceOrigin origin, const std::vector<SourceDetailsInternal>& sources)
+        // Finds a source from the given vector by its name.
+        auto FindSourceByName(std::vector<SourceDetails>& sources, std::string_view name)
         {
-            switch (origin)
-            {
-            case SourceOrigin::User:
-                SetSourcesToSettingWithFilter(Settings::Streams::UserSources, SourceOrigin::User, sources);
-                break;
-            default:
-                THROW_HR(E_UNEXPECTED);
-            }
-
-            SetMetadata(sources);
+            return std::find_if(sources.begin(), sources.end(), [&name](const SourceDetails& sd) { return Utility::CaseInsensitiveEquals(sd.Name, name); });
         }
 
 #ifndef AICLI_DISABLE_TEST_HOOKS
@@ -364,104 +206,150 @@ namespace AppInstaller::Repository
             THROW_HR(APPINSTALLER_CLI_ERROR_INVALID_SOURCE_TYPE);
         }
 
-        std::shared_ptr<ISource> CreateSourceFromDetails(const SourceDetails& details, IProgressCallback& progress)
+        bool CheckIfInitializedFromDetails(const SourceDetails& details)
         {
-            return GetFactoryForType(details.Type)->Create(details, progress);
+            return GetFactoryForType(details.Type)->IsInitialized(details);
         }
 
-        template <typename MemberFunc>
-        void AddOrUpdateFromDetails(SourceDetails& details, MemberFunc member, IProgressCallback& progress)
+        std::shared_ptr<ISource> CreateSourceFromDetails(const SourceDetails& details)
         {
-            auto factory = GetFactoryForType(details.Type);
-
-            // Attempt; if it fails, wait a short time and retry.
-            try
-            {
-                (factory.get()->*member)(details, progress);
-                details.LastUpdateTime = std::chrono::system_clock::now();
-                return;
-            }
-            CATCH_LOG();
-
-            AICLI_LOG(Repo, Info, << "Source add/update failed, waiting a bit and retrying: " << details.Name);
-            std::this_thread::sleep_for(2s);
-
-            // If this one fails, maybe the problem is persistent.
-            (factory.get()->*member)(details, progress);
-            details.LastUpdateTime = std::chrono::system_clock::now();
-        }
-
-        void AddSourceFromDetails(SourceDetails& details, IProgressCallback& progress)
-        {
-            AddOrUpdateFromDetails(details, &ISourceFactory::Add, progress);
+            return GetFactoryForType(details.Type)->Create(details);
         }
 
         void UpdateSourceFromDetails(SourceDetails& details, IProgressCallback& progress)
         {
-            AddOrUpdateFromDetails(details, &ISourceFactory::Update, progress);
+            auto factory = GetFactoryForType(details.Type);
+
+            // Attempt to update; if it fails, wait a short time and retry.
+            try
+            {
+                factory->Update(details, progress);
+                return;
+            }
+            CATCH_LOG();
+
+            AICLI_LOG(Repo, Info, << "Source update failed, waiting a bit and retrying: " << details.Name);
+            std::this_thread::sleep_for(2s);
+
+            // If this one fails, maybe the problem is persistent.
+            factory->Update(details, progress);
         }
 
         void RemoveSourceFromDetails(const SourceDetails& details, IProgressCallback& progress)
         {
             auto factory = GetFactoryForType(details.Type);
 
-            factory->Remove(details, progress);
+            if (factory->IsInitialized(details))
+            {
+                factory->Remove(details, progress);
+            }
+            else
+            {
+                AICLI_LOG(Repo, Info, << "Uninitialized source being removed, making it a no-op: " << details.Name);
+            }
         }
 
         // Determines whether (and logs why) a source should be updated before it is opened.
         bool ShouldUpdateBeforeOpen(const SourceDetails& details)
         {
-            constexpr static auto s_ZeroMins = 0min;
-            auto autoUpdateTime = User().Get<Setting::AutoUpdateTimeInMinutes>();
-
-            // A value of zero means no auto update, to get update the source run `winget update` 
-            if (autoUpdateTime != s_ZeroMins)
+            if (!CheckIfInitializedFromDetails(details))
             {
-                auto autoUpdateTimeMins = std::chrono::minutes(autoUpdateTime);
-                auto timeSinceLastUpdate = std::chrono::system_clock::now() - details.LastUpdateTime;
-                if (timeSinceLastUpdate > autoUpdateTimeMins)
-                {
-                    AICLI_LOG(Repo, Info, << "Source past auto update time [" <<
-                        std::chrono::duration_cast<std::chrono::minutes>(autoUpdateTimeMins).count() << " mins]; it has been at least " <<
-                        std::chrono::duration_cast<std::chrono::minutes>(timeSinceLastUpdate).count() << " mins");
-                    return true;
-                }
+                AICLI_LOG(Repo, Info, << "Source needs to be initialized during open: " << details.Name);
+                return true;
+            }
+
+            // TODO: Enable some amount of user control over this.
+            constexpr static auto s_DefaultAutoUpdateTime = 5min;
+
+            auto timeSinceLastUpdate = std::chrono::system_clock::now() - details.LastUpdateTime;
+            if (timeSinceLastUpdate > s_DefaultAutoUpdateTime)
+            {
+                AICLI_LOG(Repo, Info, << "Source past auto update time [" << 
+                    std::chrono::duration_cast<std::chrono::minutes>(s_DefaultAutoUpdateTime).count() << " mins]; it has been at least " << 
+                    std::chrono::duration_cast<std::chrono::minutes>(timeSinceLastUpdate).count() << " mins");
+                return true;
             }
 
             return false;
         }
-    }
 
-    std::string_view ToString(SourceOrigin origin)
-    {
-        switch (origin)
+        SourceDetails PrepareSourceDetailsForAdd(std::string name, std::string type, std::string arg, bool isDefault)
         {
-        case SourceOrigin::Default:
-            return "Default"sv;
-        case SourceOrigin::User:
-            return "User"sv;
-        default:
-            THROW_HR(E_UNEXPECTED);
+            THROW_HR_IF(E_INVALIDARG, name.empty());
+
+            AICLI_LOG(Repo, Info, << "Adding source: Name[" << name << "], Type[" << type << "], Arg[" << arg << "]");
+
+            // Check all sources for the given name.
+            std::vector<SourceDetails> currentSources = GetSources();
+
+            auto itr = FindSourceByName(currentSources, name);
+            THROW_HR_IF(APPINSTALLER_CLI_ERROR_SOURCE_NAME_ALREADY_EXISTS, itr != currentSources.end());
+
+            SourceDetails details;
+            details.Name = std::move(name);
+            details.Type = std::move(type);
+            details.Arg = std::move(arg);
+            details.LastUpdateTime = Utility::ConvertUnixEpochToSystemClock(0);
+            details.IsDefault = isDefault;
+
+            return details;
+        }
+
+        void AddDetailsToSetting(const SourceDetails& details, std::string_view setting)
+        {
+            AICLI_LOG(Repo, Info, << "Source created with extra data: " << details.Data);
+
+            std::vector<SourceDetails> currentSources = GetSourcesFromSetting(setting);
+            currentSources.emplace_back(details);
+
+            SetSourcesToSetting(setting, currentSources);
+        }
+
+        void AddSourceInternal(std::string name, std::string type, std::string arg, bool isDefault, IProgressCallback& progress)
+        {
+            SourceDetails details = PrepareSourceDetailsForAdd(name, type, arg, isDefault);
+
+            UpdateSourceFromDetails(details, progress);
+
+            AddDetailsToSetting(details, s_RepositorySettings_UserSources);
+        }
+
+        void AddUninitializedSourceInternal(std::string name, std::string type, std::string arg, bool isDefault)
+        {
+            SourceDetails details = PrepareSourceDetailsForAdd(name, type, arg, isDefault);
+            AddDetailsToSetting(details, s_RepositorySettings_UserSources);
+        }
+
+        // If there is no setting value at all, adds the default sources.
+        void AddDefaultSourcesIfNeeded()
+        {
+            auto sourcesStream = Runtime::GetSettingStream(s_RepositorySettings_UserSources);
+            if (!sourcesStream)
+            {
+                // We have to set an initial, empty list of sources or the add will create an infinite loop.
+                SetSourcesToSetting(s_RepositorySettings_UserSources, std::vector<SourceDetails>{});
+
+                AddUninitializedSourceInternal(
+                    std::string(s_Source_WingetCommunityDefault_Name),
+                    std::string(Microsoft::PreIndexedPackageSourceFactory::Type()),
+                    std::string(s_Source_WingetCommunityDefault_Arg),
+                    true);
+            }
         }
     }
 
+    // TODO: If we merge sources from multiple settings in the future, the other functions
+    // in this file all need to be enlightened with how to write to othe appropriate location.
     std::vector<SourceDetails> GetSources()
     {
-        auto internalResult = GetSourcesInternal();
-
-        std::vector<SourceDetails> result;
-        for (auto&& source : internalResult)
-        {
-            result.emplace_back(std::move(source));
-        }
-
-        return result;
+        AddDefaultSourcesIfNeeded();
+        return GetSourcesFromSetting(s_RepositorySettings_UserSources);
     }
 
     std::optional<SourceDetails> GetSource(std::string_view name)
     {
         // Check all sources for the given name.
-        auto currentSources = GetSourcesInternal();
+        std::vector<SourceDetails> currentSources = GetSources();
 
         auto itr = FindSourceByName(currentSources, name);
         if (itr == currentSources.end())
@@ -474,36 +362,14 @@ namespace AppInstaller::Repository
         }
     }
 
-    void AddSource(std::string_view name, std::string_view type, std::string_view arg, IProgressCallback& progress)
+    void AddSource(std::string name, std::string type, std::string arg, IProgressCallback& progress)
     {
-        THROW_HR_IF(E_INVALIDARG, name.empty());
-
-        AICLI_LOG(Repo, Info, << "Adding source: Name[" << name << "], Type[" << type << "], Arg[" << arg << "]");
-
-        // Check all sources for the given name.
-        auto currentSources = GetSourcesInternal();
-
-        auto itr = FindSourceByName(currentSources, name);
-        THROW_HR_IF(APPINSTALLER_CLI_ERROR_SOURCE_NAME_ALREADY_EXISTS, itr != currentSources.end());
-
-        SourceDetailsInternal details;
-        details.Name = name;
-        details.Type = type;
-        details.Arg = arg;
-        details.LastUpdateTime = Utility::ConvertUnixEpochToSystemClock(0);
-        details.Origin = SourceOrigin::User;
-
-        AddSourceFromDetails(details, progress);
-
-        AICLI_LOG(Repo, Info, << "Source created with extra data: " << details.Data);
-        currentSources.emplace_back(details);
-
-        SetSourcesByOrigin(SourceOrigin::User, currentSources);
+        AddSourceInternal(name, type, arg, false, progress);
     }
 
     std::shared_ptr<ISource> OpenSource(std::string_view name, IProgressCallback& progress)
     {
-        auto currentSources = GetSourcesInternal();
+        std::vector<SourceDetails> currentSources = GetSources();
 
         if (name.empty())
         {
@@ -534,9 +400,9 @@ namespace AppInstaller::Repository
                 if (ShouldUpdateBeforeOpen(*itr))
                 {
                     UpdateSourceFromDetails(*itr, progress);
-                    SetMetadata(currentSources);
+                    SetSourcesToSetting(s_RepositorySettings_UserSources, currentSources);
                 }
-                return CreateSourceFromDetails(*itr, progress);
+                return CreateSourceFromDetails(*itr);
             }
         }
     }
@@ -545,7 +411,7 @@ namespace AppInstaller::Repository
     {
         THROW_HR_IF(E_INVALIDARG, name.empty());
 
-        auto currentSources = GetSourcesInternal();
+        std::vector<SourceDetails> currentSources = GetSources();
         auto itr = FindSourceByName(currentSources, name);
 
         if (itr == currentSources.end())
@@ -558,7 +424,7 @@ namespace AppInstaller::Repository
             AICLI_LOG(Repo, Info, << "Named source to be updated, found: " << itr->Name);
             UpdateSourceFromDetails(*itr, progress);
 
-            SetMetadata(currentSources);
+            SetSourcesToSetting(s_RepositorySettings_UserSources, currentSources);
             return true;
         }
     }
@@ -567,7 +433,7 @@ namespace AppInstaller::Repository
     {
         THROW_HR_IF(E_INVALIDARG, name.empty());
 
-        auto currentSources = GetSourcesInternal();
+        std::vector<SourceDetails> currentSources = GetSources();
         auto itr = FindSourceByName(currentSources, name);
 
         if (itr == currentSources.end())
@@ -577,28 +443,11 @@ namespace AppInstaller::Repository
         }
         else
         {
-            AICLI_LOG(Repo, Info, << "Named source to be removed, found: " << itr->Name << " [" << ToString(itr->Origin) << ']');
+            AICLI_LOG(Repo, Info, << "Named source to be removed, found: " << itr->Name);
             RemoveSourceFromDetails(*itr, progress);
 
-            switch (itr->Origin)
-            {
-            case SourceOrigin::Default:
-            {
-                SourceDetailsInternal tombstone;
-                tombstone.Name = name;
-                tombstone.IsTombstone = true;
-                tombstone.Origin = SourceOrigin::User;
-                currentSources.emplace_back(std::move(tombstone));
-            }
-                break;
-            case SourceOrigin::User:
-                currentSources.erase(itr);
-                break;
-            default:
-                THROW_HR(E_UNEXPECTED);
-            }
-
-            SetSourcesByOrigin(SourceOrigin::User, currentSources);
+            currentSources.erase(itr);
+            SetSourcesToSetting(s_RepositorySettings_UserSources, currentSources);
 
             return true;
         }
@@ -608,13 +457,12 @@ namespace AppInstaller::Repository
     {
         if (name.empty())
         {
-            Settings::RemoveSetting(Settings::Streams::UserSources);
-            Settings::RemoveSetting(Settings::Streams::SourcesMetadata);
+            Runtime::RemoveSetting(s_RepositorySettings_UserSources);
             return true;
         }
         else
         {
-            auto currentSources = GetSourcesInternal();
+            std::vector<SourceDetails> currentSources = GetSources();
             auto itr = FindSourceByName(currentSources, name);
 
             if (itr == currentSources.end())
@@ -627,11 +475,7 @@ namespace AppInstaller::Repository
                 AICLI_LOG(Repo, Info, << "Named source to be dropped, found: " << itr->Name);
 
                 currentSources.erase(itr);
-
-                // Since this only writes the user setting, it can't actually drop non-user sources.
-                // But since it also implicitly sets all metadata, it will drop the metadata and allow
-                // somewhat of a clean slate.
-                SetSourcesByOrigin(SourceOrigin::User, currentSources);
+                SetSourcesToSetting(s_RepositorySettings_UserSources, currentSources);
 
                 return true;
             }

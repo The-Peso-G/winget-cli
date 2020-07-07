@@ -15,11 +15,6 @@ namespace AppInstallerCLIE2ETests
             Assert.AreEqual(Constants.ErrorCode.S_OK, result.ExitCode);
             Assert.True(result.StdOut.Contains("Manifest validation succeeded."));
 
-            // Validate a good yaml with extended character
-            result = TestCommon.RunAICLICommand("validate", TestCommon.GetTestDataFile("Manifests\\TëstExeInstaller.yaml"));
-            Assert.AreEqual(Constants.ErrorCode.S_OK, result.ExitCode);
-            Assert.True(result.StdOut.Contains("Manifest validation succeeded."));
-
             // Validate invalid yaml
             result = TestCommon.RunAICLICommand("validate", TestCommon.GetTestDataFile("Manifests\\TestInvalidManifest.yaml"));
             Assert.AreEqual(Constants.ErrorCode.S_OK, result.ExitCode);

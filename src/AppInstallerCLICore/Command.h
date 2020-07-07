@@ -5,8 +5,6 @@
 #include "ExecutionContext.h"
 #include "Invocation.h"
 #include "Resources.h"
-#include <winget/UserSettings.h>
-#include <winget/ExperimentalFeature.h>
 
 #include <initializer_list>
 #include <memory>
@@ -35,22 +33,7 @@ namespace AppInstaller::CLI
 
     struct Command
     {
-        // Controls the visibility of the field.
-        enum class Visibility
-        {
-            // Shown in help.
-            Show,
-            // Not shown in help.
-            Hidden,
-        };
-
-        Command(std::string_view name, std::string_view parent) :
-            Command(name, parent, Settings::ExperimentalFeature::Feature::None) {}
-        Command(std::string_view name, std::string_view parent, Command::Visibility visibility) :
-            Command(name, parent, visibility, Settings::ExperimentalFeature::Feature::None) {}
-        Command(std::string_view name, std::string_view parent, Settings::ExperimentalFeature::Feature feature) :
-            Command(name, parent, Command::Visibility::Show, feature) {}
-        Command(std::string_view name, std::string_view parent, Command::Visibility visibility, Settings::ExperimentalFeature::Feature feature);
+        Command(std::string_view name, std::string_view parent);
         virtual ~Command() = default;
 
         Command(const Command&) = default;
@@ -64,13 +47,9 @@ namespace AppInstaller::CLI
 
         std::string_view Name() const { return m_name; }
         const std::string& FullName() const { return m_fullName; }
-        Command::Visibility GetVisibility() const;
-        Settings::ExperimentalFeature::Feature Feature() const { return m_feature; }
 
         virtual std::vector<std::unique_ptr<Command>> GetCommands() const { return {}; }
         virtual std::vector<Argument> GetArguments() const { return {}; }
-        std::vector<std::unique_ptr<Command>> GetVisibleCommands() const;
-        std::vector<Argument> GetVisibleArguments() const;
 
         virtual Resource::LocString ShortDescription() const { return {}; }
         virtual Resource::LocString LongDescription() const { return {}; }
@@ -92,8 +71,6 @@ namespace AppInstaller::CLI
     private:
         std::string_view m_name;
         std::string m_fullName;
-        Command::Visibility m_visibility;
-        Settings::ExperimentalFeature::Feature m_feature;
     };
 
     template <typename Container>

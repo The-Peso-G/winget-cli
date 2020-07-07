@@ -71,7 +71,6 @@ namespace AppInstaller::CLI
     void SourceAddCommand::ExecuteInternal(Context& context) const
     {
         context <<
-            Workflow::EnsureRunningAsAdmin <<
             Workflow::GetSourceList <<
             Workflow::CheckSourceListAgainstAdd <<
             Workflow::AddSource;
@@ -160,7 +159,6 @@ namespace AppInstaller::CLI
     void SourceRemoveCommand::ExecuteInternal(Context& context) const
     {
         context <<
-            Workflow::EnsureRunningAsAdmin <<
             Workflow::GetSourceListWithFilter <<
             Workflow::RemoveSources;
     }
@@ -193,14 +191,12 @@ namespace AppInstaller::CLI
         if (context.Args.Contains(Args::Type::SourceName))
         {
             context <<
-                Workflow::EnsureRunningAsAdmin <<
                 Workflow::GetSourceListWithFilter <<
                 Workflow::ResetSourceList;
         }
         else
         {
             context <<
-                Workflow::EnsureRunningAsAdmin <<
                 Workflow::QueryUserForSourceReset <<
                 Workflow::ResetAllSources;
         }

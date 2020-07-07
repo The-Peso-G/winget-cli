@@ -85,24 +85,11 @@ namespace AppInstaller::Repository::Microsoft::Schema::V1_0
             return result;
         }
 
-        SQLite::rowid_t OneToOneTableEnsureExists(SQLite::Connection& connection, std::string_view tableName, std::string_view valueName, std::string_view value, bool overwriteLikeMatch)
+        SQLite::rowid_t OneToOneTableEnsureExists(SQLite::Connection& connection, std::string_view tableName, std::string_view valueName, std::string_view value)
         {
-            auto selectResult = OneToOneTableSelectIdByValue(connection, tableName, valueName, value, overwriteLikeMatch);
+            auto selectResult = OneToOneTableSelectIdByValue(connection, tableName, valueName, value);
             if (selectResult)
             {
-                if (overwriteLikeMatch)
-                {
-                    // If the value in the table is not an exact match, overwrite it with the incoming value
-                    auto tableValue = OneToOneTableSelectValueById(connection, tableName, valueName, selectResult.value());
-                    if (tableValue.value() != value)
-                    {
-                        SQLite::Builder::StatementBuilder updateBuilder;
-                        updateBuilder.Update(tableName).Set().Column(valueName).Equals(value).Where(SQLite::RowIDName).Equals(selectResult);
-
-                        updateBuilder.Execute(connection);
-                    }
-                }
-
                 return selectResult.value();
             }
 

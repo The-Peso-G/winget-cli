@@ -2,12 +2,10 @@
 // Licensed under the MIT License.
 #include "pch.h"
 #include "ExecutionContext.h"
-#include "winget/UserSettings.h"
+
 
 namespace AppInstaller::CLI::Execution
 {
-    using namespace Settings;
-
     namespace
     {
         // The context that will receive CTRL signals
@@ -82,17 +80,13 @@ namespace AppInstaller::CLI::Execution
         {
             Reporter.SetStyle(VisualStyle::NoVT);
         }
-        else if (Args.Contains(Args::Type::RetroStyle))
+        else if (Args.Contains(Args::Type::PlainStyle))
         {
-            Reporter.SetStyle(VisualStyle::Retro);
+            Reporter.SetStyle(VisualStyle::Plain);
         }
         else if (Args.Contains(Args::Type::RainbowStyle))
         {
             Reporter.SetStyle(VisualStyle::Rainbow);
-        }
-        else
-        {
-            Reporter.SetStyle(User().Get<Setting::ProgressBarVisualStyle>());
         }
     }
 
